@@ -1,0 +1,10 @@
+.DS_Store
+*.log
+node_modules/
+screenshot*.png
+screenshot.png
+*.png
+*.js
+!index.html
+run.sh
+test_*.js

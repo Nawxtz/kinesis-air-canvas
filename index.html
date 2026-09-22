@@ -1,0 +1,1375 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KINESIS — Spatial Computing Instrument v3.3</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Sarabun:wght@300;400;600&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-elevated: #1a1a24;
+    --border: #1e1e2e;
+    --border-active: #2e344e;
+    --accent: #00f5c4;
+    --accent2: #ff6b6b;
+    --accent3: #ffd93d;
+    --text: #e8e8f0;
+    --muted: #888ea6;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    height: 100dvh;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Sarabun', sans-serif;
+    height: 100%;
+    height: 100dvh;
+    max-height: 100vh;
+    max-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  header {
+    flex: 0 0 auto;
+    width: 100%;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    position: relative;
+    z-index: 20;
+  }
+
+  .logo {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+    margin: 0;
+  }
+  .logo span { color: var(--muted); font-size: 12px; margin-left: 6px; }
+
+  .status-bar { display: flex; gap: 12px; align-items: center; }
+
+  .status-pill {
+    display: flex; align-items: center; gap: 6px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px; color: var(--muted); letter-spacing: normal;
+  }
+
+  .status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+  .status-dot.active { background: var(--accent); animation: pulse 1.5s infinite; }
+  .status-dot.drawing { background: var(--accent2); }
+  .status-dot.paused { background: var(--accent3); }
+
+  @keyframes pulse { 0%,100% {opacity:1;} 50% {opacity:0.4;} }
+
+  .head-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    padding: 5px 10px;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+    border-radius: 4px;
+    transition: all 0.2s;
+  }
+  .head-btn.on { color: var(--accent); border-color: var(--accent); }
+  .head-btn:hover { border-color: var(--accent); }
+
+  /* Main Viewport Workspace */
+  main {
+    flex: 1 1 0;
+    min-height: 0;
+    height: 100%;
+    max-height: 100%;
+    display: flex;
+    width: 100%;
+    position: relative;
+    overflow: hidden;
+    z-index: 10;
+  }
+
+  .canvas-area {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    max-height: 100%;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: #040508;
+  }
+
+  .canvas-area::before, .canvas-area::after {
+    content: ''; position: absolute; width: 32px; height: 32px;
+    border-color: var(--accent); border-style: solid; opacity: 0.4;
+    z-index: 5; pointer-events: none;
+  }
+  .canvas-area::before { top: 12px; left: 12px; border-width: 2px 0 0 2px; }
+  .canvas-area::after  { bottom: 12px; right: 12px; border-width: 0 2px 2px 0; }
+
+  #video {
+    position: absolute; width: 100%; height: 100%;
+    object-fit: cover; transform: scaleX(-1); opacity: 0.55;
+  }
+  .canvas-area.sim #video { display: none; }
+  .canvas-area.sim #drawCanvas,
+  .canvas-area.sim #overlayCanvas { transform: none; }
+
+  #drawCanvas { position: absolute; width: 100%; height: 100%; transform: scaleX(-1); pointer-events: none; z-index: 2; }
+  #overlayCanvas { position: absolute; width: 100%; height: 100%; transform: scaleX(-1); pointer-events: none; z-index: 3; }
+
+  #placeholder {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; z-index: 30; background: radial-gradient(circle at center, #101420 0%, #07080c 80%);
+    padding: 16px; overflow-y: auto; max-height: 100%;
+  }
+  #placeholder.hidden { display: none; }
+  .placeholder-icon { font-size: 48px; opacity: 0.3; }
+  .placeholder-text {
+    font-family: 'Space Mono', monospace; font-size: 12px; color: var(--muted);
+    letter-spacing: normal; text-align: center; line-height: 1.7; max-width: 440px;
+  }
+  .placeholder-btns { display: flex; gap: 10px; margin-top: 4px; }
+
+  #startBtn, #mouseSimBtn {
+    padding: 11px 22px; background: transparent;
+    border: 1px solid var(--accent); color: var(--accent);
+    font-family: 'Space Mono', monospace; font-size: 12px;
+    letter-spacing: 0.04em; cursor: pointer; transition: all 0.2s; border-radius: 4px;
+  }
+  #mouseSimBtn { border-color: var(--border-active); color: var(--muted); }
+  #startBtn:hover { background: var(--accent); color: var(--bg); }
+  #mouseSimBtn:hover { border-color: var(--accent3); color: var(--accent3); }
+
+  #exitSimBtn {
+    position: absolute; top: 14px; left: 14px; z-index: 12;
+    display: none;
+    padding: 6px 14px; background: rgba(10,10,15,0.9);
+    border: 1px solid var(--accent3); color: var(--accent3);
+    font-family: 'Space Mono', monospace; font-size: 12px;
+    letter-spacing: 0.04em; cursor: pointer; border-radius: 4px;
+  }
+  .canvas-area.sim #exitSimBtn { display: block; }
+
+  /* Tactical Sidebar */
+  .sidebar {
+    width: 260px;
+    flex: 0 0 260px;
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
+    border-left: 1px solid var(--border);
+    background: var(--surface);
+    display: flex; flex-direction: column;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    z-index: 20;
+  }
+
+  .sidebar::-webkit-scrollbar { width: 4px; }
+  .sidebar::-webkit-scrollbar-thumb { background: var(--border-active); border-radius: 2px; }
+
+  .panel { padding: 12px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+
+  .panel-label {
+    font-family: 'Space Mono', monospace; font-size: 12px;
+    letter-spacing: normal; color: var(--muted); font-weight: 600;
+    margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .panel-label .val { color: var(--accent); }
+
+  #openEditorBtn {
+    background: transparent; border: 1px solid var(--border-active); color: var(--accent);
+    width: 22px; height: 22px; line-height: 1; cursor: pointer; font-size: 13px;
+    border-radius: 4px; transition: all 0.2s;
+  }
+  #openEditorBtn:hover { border-color: var(--accent); }
+
+  /* Two-column palette */
+  .palette-cols { display: flex; gap: 8px; }
+  .pal-col { flex: 1; display: flex; flex-direction: column; gap: 5px; }
+  .pal-col-head {
+    font-family: 'Space Mono', monospace; font-size: 12px;
+    color: var(--muted); letter-spacing: normal; text-align: center;
+  }
+
+  .color-swatch {
+    width: 100%; aspect-ratio: 1; border-radius: 4px; cursor: pointer;
+    border: 2px solid transparent; position: relative;
+    transition: transform 0.15s, border-color 0.15s;
+  }
+  .color-swatch:hover { transform: scale(1.08); }
+  .color-swatch.selected { border-color: white; transform: scale(1.05); outline: 2px solid rgba(255,255,255,0.4); outline-offset: 1px; }
+  .color-swatch.editable::after {
+    content: '+'; position: absolute; right: 3px; bottom: 2px;
+    font-family: 'Space Mono', monospace; font-size: 12px;
+    color: rgba(255,255,255,0.7); pointer-events: none;
+  }
+
+  /* Color editor */
+  #colorEditor { display: none; margin-bottom: 12px; padding: 10px; border: 1px solid var(--border-active); background: var(--bg); border-radius: 4px; }
+  #colorEditor.visible { display: block; }
+  .editor-head {
+    font-family: 'Space Mono', monospace; font-size: 12px; color: var(--muted);
+    letter-spacing: normal; margin-bottom: 6px;
+  }
+  #targetChips { display: flex; gap: 5px; margin-bottom: 8px; }
+  .target-chip {
+    flex: 1; aspect-ratio: 1; border-radius: 3px; cursor: pointer;
+    border: 2px solid transparent; transition: border-color 0.15s;
+  }
+  .target-chip.selected { border-color: var(--accent3); }
+  #colorWheel { display: block; margin: 0 auto 8px auto; cursor: crosshair; border-radius: 50%; }
+  input[type=range] { width: 100%; accent-color: var(--accent); background: transparent; }
+  .editor-btns { display: flex; gap: 6px; margin-top: 8px; }
+  .editor-btns button {
+    flex: 1; padding: 6px; background: transparent;
+    border: 1px solid var(--accent); color: var(--accent);
+    font-family: 'Space Mono', monospace; font-size: 12px; cursor: pointer; border-radius: 4px;
+  }
+  .editor-btns button.close { border-color: var(--border-active); color: var(--muted); }
+
+  .controls-list { display: flex; flex-direction: column; gap: 5px; }
+  .control-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .key-badge {
+    font-family: 'Space Mono', monospace; font-size: 12px; padding: 2px 6px;
+    background: var(--border); border: 1px solid #2a2a3e; border-radius: 4px;
+    color: var(--accent3); white-space: nowrap; min-width: 68px; text-align: center;
+  }
+
+  .landmark-display { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--muted); line-height: 1.7; }
+  .landmark-row { display: flex; justify-content: space-between; align-items: center; }
+  .landmark-val { color: var(--accent); font-weight: 700; }
+  .landmark-val.off { color: var(--muted); font-weight: normal; }
+
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .stat-box { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; }
+  .stat-num { font-family: 'Space Mono', monospace; font-size: 16px; color: var(--accent); line-height: 1; font-weight: 700; }
+  .stat-label { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* Sticky Actions Panel at Sidebar Bottom */
+  .panel.actions-panel {
+    margin-top: auto;
+    position: sticky;
+    bottom: 0;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    border-bottom: none;
+    z-index: 10;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.4);
+    padding: 12px 16px;
+  }
+
+  .btn-row { display: flex; gap: 6px; margin-bottom: 6px; }
+  .action-btn {
+    flex: 1; padding: 8px 4px; background: transparent;
+    border: 1px solid var(--accent); color: var(--accent);
+    font-family: 'Space Mono', monospace; font-size: 12px; cursor: pointer; transition: all 0.2s; border-radius: 4px;
+    letter-spacing: normal;
+  }
+  .action-btn:hover { background: rgba(0,245,196,0.1); }
+  .action-btn.warn { border-color: var(--accent2); color: var(--accent2); }
+  .action-btn.warn:hover { background: rgba(255,107,107,0.1); }
+  .action-btn.toggle.on { border-color: var(--accent3); color: var(--accent3); }
+
+  #drawingIndicator {
+    position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+    font-family: 'Space Mono', monospace; font-size: 12px; letter-spacing: normal;
+    padding: 6px 18px; border: 1px solid var(--accent2); color: var(--accent2);
+    background: rgba(10,10,15,0.9); z-index: 10; display: none; border-radius: 20px;
+    backdrop-filter: blur(8px);
+  }
+  #drawingIndicator.visible { display: block; }
+
+  #saveOverlay {
+    position: absolute; top: 32px; left: 50%; transform: translateX(-50%);
+    z-index: 15; display: none; flex-direction: column; align-items: center; gap: 8px;
+    background: rgba(10,10,15,0.94); border: 1px solid var(--accent3);
+    padding: 14px 22px; font-family: 'Space Mono', monospace; font-size: 12px;
+    letter-spacing: normal; color: var(--accent3); text-align: center; border-radius: 8px;
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.6); backdrop-filter: blur(12px);
+  }
+  #saveOverlay.visible { display: flex; }
+  .save-bar { width: 240px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  #saveBarFill { height: 100%; width: 100%; background: var(--accent3); transform: scaleX(0); transform-origin: left; transition: transform 0.08s linear; }
+  #saveCountdown { color: var(--muted); }
+
+  #pinchIndicator {
+    position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+    font-family: 'Space Mono', monospace; font-size: 12px; letter-spacing: normal;
+    padding: 6px 18px; border: 1px solid var(--accent3); color: var(--accent3);
+    background: rgba(10,10,15,0.9); z-index: 10; display: none; border-radius: 20px;
+    white-space: nowrap; backdrop-filter: blur(8px);
+  }
+  #pinchIndicator.visible { display: block; }
+
+  #errorToast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: rgba(255,107,107,0.15); border: 1px solid var(--accent2); color: var(--accent2);
+    font-family: 'Space Mono', monospace; font-size: 12px; padding: 10px 20px;
+    z-index: 999; display: none; border-radius: 4px;
+  }
+  #errorToast.visible { display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">⚡ KINESIS <span>SPATIAL INSTRUMENT v3.3</span></div>
+  <div class="status-bar">
+    <button class="head-btn on" id="soundBtn">🔊 SOUND: ON</button>
+    <div class="status-pill"><div class="status-dot" id="camDot"></div><span id="camLabel">CAMERA OFF</span></div>
+    <div class="status-pill"><div class="status-dot" id="handDot"></div><span id="handLabel">NO HAND</span></div>
+    <div class="status-pill"><div class="status-dot" id="drawDot"></div><span id="drawLabel">SYSTEM READY</span></div>
+  </div>
+</header>
+
+<main>
+  <div class="canvas-area" id="canvasArea">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="drawCanvas"></canvas>
+    <canvas id="overlayCanvas"></canvas>
+
+    <div id="placeholder">
+      <div class="placeholder-icon">🫳</div>
+      <div class="placeholder-text">
+        KINESIS SPATIAL INSTRUMENT<br>
+        วาดภาพกลางอากาศด้วยระบบตรวจจับพิกัดนิ้วแบบเรียลไทม์ (3D Spatial Telemetry)<br>
+        กดเริ่มกล้องเพื่อใช้งาน หรือทดสอบระบบทันทีผ่านโหมดจำลองเมาส์
+      </div>
+      <div class="placeholder-btns">
+        <button id="startBtn">📷 เริ่มกล้อง / START SENSORS</button>
+        <button id="mouseSimBtn">🖱️ MOUSE SIMULATION</button>
+      </div>
+    </div>
+
+    <button id="exitSimBtn">✕ EXIT SIM / ออกโหมดจำลอง</button>
+    <div id="drawingIndicator">● ARMED / ACTIVE DRAW</div>
+
+    <div id="saveOverlay">
+      <div id="saveHoldLabel">HOLD ✌️ TO SAVE / ค้าง ✌️ เพื่อเตรียมบันทึก</div>
+      <div id="savePromptText">SAVE? 👍 HOLD 3s = YES / 👎 = NO<br>ยืนยันการบันทึกภาพ</div>
+      <div class="save-bar"><div id="saveBarFill"></div></div>
+      <div id="saveCountdown"></div>
+    </div>
+
+    <div id="pinchIndicator"></div>
+  </div>
+
+  <div class="sidebar">
+    <div class="panel">
+      <div class="panel-label">สีหมึกเลเซอร์ / Laser Palette <button id="openEditorBtn" title="Color wheel">＋</button></div>
+      <div id="colorEditor">
+        <div class="editor-head">Target slot / ช่องสีที่แก้</div>
+        <div id="targetChips"></div>
+        <canvas id="colorWheel" width="150" height="150"></canvas>
+        <div class="editor-head">Lightness / ความสว่าง</div>
+        <input type="range" id="wheelLight" min="15" max="85" value="55">
+        <div class="editor-btns">
+          <button id="applyColorBtn">APPLY</button>
+          <button id="closeEditorBtn" class="close">CLOSE</button>
+        </div>
+      </div>
+      <div class="palette-cols">
+        <div class="pal-col" id="mainCol"><div class="pal-col-head">MAIN</div></div>
+        <div class="pal-col" id="customCol"><div class="pal-col-head">CUSTOM</div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">ขนาดเส้น / Beam Size <span class="val" id="beamLabel">6px</span></div>
+      <input type="range" id="brushSlider" min="2" max="28" step="1" value="6">
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">การควบคุมท่าทาง / Gesture Matrix</div>
+      <div class="controls-list">
+        <div class="control-item"><span class="key-badge">☝️ 1 นิ้ว</span><span>วาดเส้น + ล็อกเมนู (Draw + Menu Lock)</span></div>
+        <div class="control-item"><span class="key-badge">🤏 โป้ง+ปลายนิ้ว</span><span>ยกปากกาแล้วแตะปลาย (Pinch Menu)</span></div>
+        <div class="control-item"><span class="key-badge">🤏 โป้ง+ก้อย</span><span>เปลี่ยนขนาดเส้น (Cycle Brush)</span></div>
+        <div class="control-item"><span class="key-badge">✌️ 2 นิ้ว</span><span>ยกปากกา (Pen Lift / Hover)</span></div>
+        <div class="control-item"><span class="key-badge">✌️ ค้าง 5s</span><span>ถามบันทึก (Save Prompt)</span></div>
+        <div class="control-item"><span class="key-badge">👍 ค้าง 3s</span><span>บันทึก (Save Confirm)</span></div>
+        <div class="control-item"><span class="key-badge">👎</span><span>ยกเลิกบันทึก (Cancel)</span></div>
+        <div class="control-item"><span class="key-badge">✊ กำมือ</span><span>พักเส้น (Standby)</span></div>
+        <div class="control-item"><span class="key-badge">SHIFT</span><span>พักระบบ (System Freeze)</span></div>
+        <div class="control-item"><span class="key-badge">CTRL+Z</span><span>ย้อนกลับ (Undo)</span></div>
+        <div class="control-item"><span class="key-badge">SPACE</span><span>ล้างหน้าจอ (Clear All)</span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">พิกัดเซนเซอร์ / Telemetry</div>
+      <div class="landmark-display">
+        <div class="landmark-row"><span>#0 Wrist</span><span class="landmark-val off" id="lm0">—</span></div>
+        <div class="landmark-row"><span>#8 Index Tip</span><span class="landmark-val off" id="lm8">—</span></div>
+        <div class="landmark-row"><span>#12 Mid Tip</span><span class="landmark-val off" id="lm12">—</span></div>
+        <div class="landmark-row"><span>#4 Thumb Tip</span><span class="landmark-val off" id="lm4">—</span></div>
+        <div class="landmark-row"><span>State</span><span class="landmark-val off" id="lmGesture">—</span></div>
+        <div class="landmark-row"><span>LUMA·GAIN</span><span class="landmark-val" id="lightReadout">— · 1.00 · AUTO</span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">สถานะระบบ / Diagnostics</div>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="stat-num" id="statFPS">0</div><div class="stat-label">FPS</div></div>
+        <div class="stat-box"><div class="stat-num" id="statStrokes">0</div><div class="stat-label">Strokes</div></div>
+        <div class="stat-box"><div class="stat-num" id="statPoints">0</div><div class="stat-label">Vertices</div></div>
+        <div class="stat-box"><div class="stat-num" id="statHands">0</div><div class="stat-label">Entities</div></div>
+      </div>
+    </div>
+
+    <div class="panel actions-panel">
+      <div class="btn-row">
+        <button class="action-btn" id="undoBtn">↩️ Undo</button>
+        <button class="action-btn" id="saveBtn">💾 Export PNG</button>
+      </div>
+      <div class="btn-row">
+        <button class="action-btn toggle on" id="autoBrightBtn">☀️ AUTO BRIGHT: ON</button>
+      </div>
+      <input type="range" id="brightnessSlider" min="0.5" max="2.2" step="0.05" value="1" style="display:none; margin-bottom:8px;">
+      <button class="action-btn warn" id="clearBtn">🗑 Clear Canvas</button>
+    </div>
+  </div>
+</main>
+
+<div id="errorToast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+
+<script>
+// ─── Config (single sources of truth) ───────────────────────────────────────
+const MAIN_COLORS = ['#00f5c4', '#ff6b6b', '#ffd93d', '#6bcbff', '#ff9ff3', '#ffffff'];
+const DEFAULT_CUSTOM = ['#a8e6cf', '#ff8b94', '#ffd3b6', '#c7ceea', '#f8b500', '#845ec2'];
+const BRUSH_PRESETS = [3, 6, 12, 20];
+
+const PINCH_CONFIG = {
+  baseThreshold: 0.20,      // max thumb-tip distance (hand-scale normalized) to enter
+  topologyMargin: 0.85,     // thumb must be this much closer to TIP than to PIP
+  holdDuration: 130,
+  releaseThreshold: 0.35,
+  cameraAspect: 1
+};
+const SAVE_CONFIG  = { vHoldDuration: 5000, thumbHoldDuration: 3000, promptTimeout: 10000, thumbExtendRatio: 0.85, upMargin: 0.7 };
+const SIZE_CONFIG  = { minPx: 2, maxPx: 28 };
+const LIGHT_CONFIG = { targetLuma: 0.50, minGain: 0.5, maxGain: 2.2, ema: 0.1, sampleEvery: 3 };
+
+// ─── State ──────────────────────────────────────────────────────────────────
+let customColors = loadCustomColors();
+let appPaused = false;
+let editorOpen = false;
+let targetSlot = 0;
+let pendingHex = null;
+let currentColorIndex = 0;
+let currentBrush = 6;
+let strokes = [];
+let currentStroke = null;
+let handDetected = false;
+let cameraStarted = false;
+let mouseMode = false;
+let soundOn = true;
+let lastFrameTime = performance.now();
+let fps = 0;
+let totalPoints = 0;
+let lastSmoothedPoint = null;
+
+// Light pipeline state
+let lightAuto = true;
+let lightGain = 1;
+let lastLuma = 0;
+let frameCounter = 0;
+
+function palette() { return MAIN_COLORS.concat(customColors); }
+function currentColor() { return palette()[currentColorIndex]; }
+
+function loadCustomColors() {
+  try {
+    const raw = localStorage.getItem('kinesis-custom-colors');
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr) && arr.length === 6) return arr;
+    }
+  } catch (e) {}
+  return DEFAULT_CUSTOM.slice();
+}
+function persistCustomColors() {
+  try { localStorage.setItem('kinesis-custom-colors', JSON.stringify(customColors)); } catch (e) {}
+}
+
+// Pinch states
+function createPinchState() { return { inPinch: false, fired: false, startTime: 0 }; }
+const pinchStates = { middle: createPinchState(), ring: createPinchState(), pinky: createPinchState() };
+function resetAllPinchStates() {
+  for (const k of ['middle', 'ring', 'pinky']) {
+    pinchStates[k].inPinch = false; pinchStates[k].fired = false; pinchStates[k].startTime = 0;
+  }
+}
+
+// Save flow
+const saveFlow = { stage: 'idle', stageStart: 0, promptExpire: 0, thumbHoldStart: 0 };
+function resetSaveFlow() { saveFlow.stage = 'idle'; saveFlow.stageStart = 0; saveFlow.promptExpire = 0; saveFlow.thumbHoldStart = 0; }
+
+// ─── DOM ────────────────────────────────────────────────────────────────────
+const video = document.getElementById('video');
+const canvasArea = document.getElementById('canvasArea');
+const drawCanvas = document.getElementById('drawCanvas');
+const overlayCanvas = document.getElementById('overlayCanvas');
+const dCtx = drawCanvas.getContext('2d');
+const oCtx = overlayCanvas.getContext('2d');
+const placeholder = document.getElementById('placeholder');
+const startBtn = document.getElementById('startBtn');
+const mouseSimBtn = document.getElementById('mouseSimBtn');
+const exitSimBtn = document.getElementById('exitSimBtn');
+const clearBtn = document.getElementById('clearBtn');
+const saveBtn = document.getElementById('saveBtn');
+const undoBtn = document.getElementById('undoBtn');
+const soundBtn = document.getElementById('soundBtn');
+const drawIndicator = document.getElementById('drawingIndicator');
+const pinchIndicator = document.getElementById('pinchIndicator');
+const saveOverlay = document.getElementById('saveOverlay');
+const saveHoldLabel = document.getElementById('saveHoldLabel');
+const savePromptText = document.getElementById('savePromptText');
+const saveBarFill = document.getElementById('saveBarFill');
+const saveCountdown = document.getElementById('saveCountdown');
+const openEditorBtn = document.getElementById('openEditorBtn');
+const colorEditor = document.getElementById('colorEditor');
+const targetChipsEl = document.getElementById('targetChips');
+const wheelCanvas = document.getElementById('colorWheel');
+const wheelCtx = wheelCanvas.getContext('2d');
+const wheelLight = document.getElementById('wheelLight');
+const applyColorBtn = document.getElementById('applyColorBtn');
+const closeEditorBtn = document.getElementById('closeEditorBtn');
+const brushSlider = document.getElementById('brushSlider');
+const beamLabel = document.getElementById('beamLabel');
+const autoBrightBtn = document.getElementById('autoBrightBtn');
+const brightnessSlider = document.getElementById('brightnessSlider');
+const lightReadout = document.getElementById('lightReadout');
+const camDot = document.getElementById('camDot'), camLabel = document.getElementById('camLabel');
+const handDot = document.getElementById('handDot'), handLabel = document.getElementById('handLabel');
+const drawDot = document.getElementById('drawDot'), drawLabel = document.getElementById('drawLabel');
+const lm0 = document.getElementById('lm0'), lm4 = document.getElementById('lm4');
+const lm8 = document.getElementById('lm8'), lm12 = document.getElementById('lm12');
+const lmGesture = document.getElementById('lmGesture');
+const statFPS = document.getElementById('statFPS'), statStrokes = document.getElementById('statStrokes');
+const statPoints = document.getElementById('statPoints'), statHands = document.getElementById('statHands');
+
+// ─── Audio ──────────────────────────────────────────────────────────────────
+let audioCtx = null;
+function blip(freq, dur, type, vol) {
+  if (!soundOn) return;
+  dur = dur || 0.07; type = type || 'square'; vol = vol || 0.035;
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + dur);
+  } catch (e) {}
+}
+
+// ─── Palette UI ─────────────────────────────────────────────────────────────
+const swatchEls = [];
+function buildPalette() {
+  const mainCol = document.getElementById('mainCol');
+  const customCol = document.getElementById('customCol');
+  mainCol.querySelectorAll('.color-swatch').forEach(e => e.remove());
+  customCol.querySelectorAll('.color-swatch').forEach(e => e.remove());
+  swatchEls.length = 0;
+  palette().forEach((c, i) => {
+    const sw = document.createElement('div');
+    sw.className = 'color-swatch' + (i >= 6 ? ' editable' : '');
+    sw.style.background = c;
+    sw.title = c + (i >= 6 ? ' (editable)' : '');
+    sw.onclick = () => {
+      currentColorIndex = i;
+      syncPaletteUI();
+      blip(700 + i * 30, 0.05);
+      if (editorOpen && i >= 6) { targetSlot = i - 6; syncChips(); }
+    };
+    swatchEls.push(sw);
+    (i < 6 ? mainCol : customCol).appendChild(sw);
+  });
+  syncPaletteUI();
+}
+function syncPaletteUI() {
+  const pal = palette();
+  swatchEls.forEach((el, i) => {
+    el.style.background = pal[i];
+    el.classList.toggle('selected', i === currentColorIndex);
+  });
+}
+
+// ─── Color wheel editor ─────────────────────────────────────────────────────
+let wheelBase = null;
+let pickH = 170, pickS = 0.7, pickL = 0.55;
+const WHEEL_R = 70, WHEEL_C = 75;
+
+function hslToRgb(h, s, l) {
+  h = ((h % 360) + 360) % 360 / 360;
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const f = (t) => {
+    if (t < 0) t += 1; if (t > 1) t -= 1;
+    if (t < 1/6) return p + (q - p) * 6 * t;
+    if (t < 1/2) return q;
+    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+    return p;
+  };
+  return [Math.round(f(h + 1/3) * 255), Math.round(f(h) * 255), Math.round(f(h - 1/3) * 255)];
+}
+function hslToHex(h, s, l) {
+  const [r, g, b] = hslToRgb(h, s, l);
+  return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+function renderWheelBase() {
+  wheelBase = document.createElement('canvas');
+  wheelBase.width = 150; wheelBase.height = 150;
+  const bCtx = wheelBase.getContext('2d');
+  const img = bCtx.createImageData(150, 150);
+  for (let y = 0; y < 150; y++) {
+    for (let x = 0; x < 150; x++) {
+      const dx = x - WHEEL_C, dy = y - WHEEL_C;
+      const d = Math.sqrt(dx*dx + dy*dy);
+      const idx = (y * 150 + x) * 4;
+      if (d <= WHEEL_R) {
+        const h = Math.atan2(dy, dx) * 180 / Math.PI;
+        const s = Math.min(1, d / WHEEL_R);
+        const [r, g, b] = hslToRgb(h, s, 0.5);
+        img.data[idx] = r; img.data[idx+1] = g; img.data[idx+2] = b; img.data[idx+3] = 255;
+      } else img.data[idx+3] = 0;
+    }
+  }
+  bCtx.putImageData(img, 0, 0);
+}
+function drawWheel() {
+  wheelCtx.clearRect(0, 0, 150, 150);
+  if (wheelBase) wheelCtx.drawImage(wheelBase, 0, 0);
+  const a = pickH * Math.PI / 180;
+  const mx = WHEEL_C + Math.cos(a) * pickS * WHEEL_R;
+  const my = WHEEL_C + Math.sin(a) * pickS * WHEEL_R;
+  wheelCtx.beginPath();
+  wheelCtx.arc(mx, my, 5, 0, Math.PI * 2);
+  wheelCtx.strokeStyle = 'white'; wheelCtx.lineWidth = 2; wheelCtx.stroke();
+  wheelCtx.beginPath();
+  wheelCtx.arc(mx, my, 3, 0, Math.PI * 2);
+  wheelCtx.fillStyle = pendingHex || '#fff'; wheelCtx.fill();
+}
+function updatePending() {
+  pendingHex = hslToHex(pickH, pickS, pickL);
+  drawWheel();
+}
+function wheelPick(e) {
+  const rect = wheelCanvas.getBoundingClientRect();
+  const dx = e.clientX - rect.left - WHEEL_C;
+  const dy = e.clientY - rect.top - WHEEL_C;
+  const d = Math.sqrt(dx*dx + dy*dy);
+  if (d <= WHEEL_R + 5) {
+    pickH = Math.atan2(dy, dx) * 180 / Math.PI;
+    pickS = Math.min(1, d / WHEEL_R);
+    updatePending();
+  }
+}
+let wheelDragging = false;
+wheelCanvas.addEventListener('pointerdown', (e) => { wheelDragging = true; wheelPick(e); });
+window.addEventListener('pointermove', (e) => { if (wheelDragging) wheelPick(e); });
+window.addEventListener('pointerup', () => { wheelDragging = false; });
+wheelLight.addEventListener('input', () => { pickL = wheelLight.value / 100; updatePending(); });
+
+function syncChips() {
+  targetChipsEl.innerHTML = '';
+  customColors.forEach((c, i) => {
+    const chip = document.createElement('div');
+    chip.className = 'target-chip' + (i === targetSlot ? ' selected' : '');
+    chip.style.background = c;
+    chip.onclick = () => { targetSlot = i; syncChips(); blip(600, 0.04); };
+    targetChipsEl.appendChild(chip);
+  });
+}
+function openEditor() {
+  editorOpen = true;
+  if (!wheelBase) renderWheelBase();
+  syncChips();
+  updatePending();
+  colorEditor.classList.add('visible');
+  blip(500, 0.06);
+}
+function closeEditor() {
+  editorOpen = false;
+  colorEditor.classList.remove('visible');
+  blip(400, 0.06);
+}
+openEditorBtn.onclick = () => editorOpen ? closeEditor() : openEditor();
+closeEditorBtn.onclick = closeEditor;
+applyColorBtn.onclick = () => {
+  if (!pendingHex) return;
+  customColors[targetSlot] = pendingHex;
+  persistCustomColors();
+  currentColorIndex = 6 + targetSlot;
+  syncPaletteUI(); syncChips();
+  showFlash('🎨 SLOT ' + (targetSlot + 1) + ' UPDATED');
+  blip(990, 0.09);
+};
+
+// ─── Brush ──────────────────────────────────────────────────────────────────
+function setBrush(px, silent) {
+  px = Math.max(SIZE_CONFIG.minPx, Math.min(SIZE_CONFIG.maxPx, Math.round(px)));
+  currentBrush = px;
+  brushSlider.value = px;
+  beamLabel.textContent = px + 'px';
+  if (!silent) blip(660, 0.05);
+}
+brushSlider.addEventListener('input', () => setBrush(+brushSlider.value, true));
+brushSlider.addEventListener('change', () => blip(660, 0.05));
+function cycleBrush() {
+  let idx = 0, best = 1e9;
+  BRUSH_PRESETS.forEach((p, i) => { const d = Math.abs(p - currentBrush); if (d < best) { best = d; idx = i; } });
+  setBrush(BRUSH_PRESETS[(idx + 1) % BRUSH_PRESETS.length]);
+  showFlash('✏️ BEAM: ' + currentBrush + 'px');
+}
+
+// ─── Color cycling ──────────────────────────────────────────────────────────
+function cycleColor(dir) {
+  const n = palette().length;
+  currentColorIndex = (currentColorIndex + dir + n) % n;
+  syncPaletteUI();
+  showFlash(dir > 0 ? '🎨 NEXT COLOR' : '🎨 PREV COLOR');
+  blip(880, 0.06);
+}
+
+function showFlash(text) {
+  pinchIndicator.textContent = text;
+  pinchIndicator.classList.add('visible');
+  setTimeout(() => pinchIndicator.classList.remove('visible'), 1200);
+}
+
+// ─── Canvas helpers ─────────────────────────────────────────────────────────
+function resizeCanvases() {
+  const w = canvasArea.clientWidth, h = canvasArea.clientHeight;
+  [drawCanvas, overlayCanvas].forEach(c => { c.width = w; c.height = h; });
+  redrawStrokes();
+}
+window.addEventListener('resize', resizeCanvases);
+
+// Pixel-perfect coordinate mapping considering object-fit: cover
+function toScreenCoords(normX, normY) {
+  const W = overlayCanvas.width, H = overlayCanvas.height;
+  const vw = video.videoWidth || 1280, vh = video.videoHeight || 720;
+  const scale = Math.max(W / vw, H / vh);
+  const rw = vw * scale, rh = vh * scale;
+  const ox = (W - rw) / 2, oy = (H - rh) / 2;
+  return { x: ox + normX * rw, y: oy + normY * rh };
+}
+
+function redrawStrokes() {
+  dCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+  strokes.forEach(drawFullStroke);
+}
+function drawFullStroke(s) {
+  if (!s.points || s.points.length < 2) return;
+  dCtx.beginPath();
+  dCtx.strokeStyle = s.color; dCtx.lineWidth = s.size;
+  dCtx.lineCap = 'round'; dCtx.lineJoin = 'round';
+  dCtx.moveTo(s.points[0].x, s.points[0].y);
+  for (let i = 1; i < s.points.length; i++) dCtx.lineTo(s.points[i].x, s.points[i].y);
+  dCtx.stroke();
+}
+function drawSegment(s) {
+  if (!s.points || s.points.length < 2) return;
+  const p1 = s.points[s.points.length - 2], p2 = s.points[s.points.length - 1];
+  dCtx.beginPath();
+  dCtx.strokeStyle = s.color; dCtx.lineWidth = s.size;
+  dCtx.lineCap = 'round'; dCtx.lineJoin = 'round';
+  dCtx.moveTo(p1.x, p1.y); dCtx.lineTo(p2.x, p2.y);
+  dCtx.stroke();
+}
+function clearCanvas() {
+  strokes = []; currentStroke = null; totalPoints = 0;
+  dCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+  updateStats();
+  blip(180, 0.12, 'sawtooth');
+}
+function undoStroke() {
+  if (strokes.length > 0) { strokes.pop(); redrawStrokes(); updateStats(); blip(300, 0.06); }
+}
+function saveCanvas() {
+  const t = document.createElement('canvas');
+  t.width = drawCanvas.width; t.height = drawCanvas.height;
+  const tc = t.getContext('2d');
+  tc.translate(t.width, 0); tc.scale(-1, 1);
+  tc.drawImage(drawCanvas, 0, 0);
+  tc.setTransform(1, 0, 0, 1, 0, 0);
+  const a = document.createElement('a');
+  a.download = 'kinesis-' + Date.now() + '.png';
+  a.href = t.toDataURL('image/png');
+  a.click();
+}
+
+// ─── Geometry ───────────────────────────────────────────────────────────────
+function distanceRaw(a, b) {
+  const dx = (a.x - b.x) * PINCH_CONFIG.cameraAspect;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx*dx + dy*dy);
+}
+function thumbUpness(lm, W, H) {
+  const dx = (lm[4].x - lm[0].x) * W, dy = (lm[4].y - lm[0].y) * H;
+  const len = Math.sqrt(dx*dx + dy*dy);
+  return len < 1 ? 0 : -dy / len;
+}
+
+// Tip-touch topology: thumb must be nearer the fingertip than the finger's PIP,
+// AND within maxDist (hand-scale normalized). Separates deliberate tip pinches
+// from the draw-pose rest (thumb lying on the side of curled fingers).
+function pinchTouch(lm, tip, pip, handScale, maxDist) {
+  const dTip = distanceRaw(lm[4], lm[tip]);
+  const dPip = distanceRaw(lm[4], lm[pip]);
+  return (dTip < dPip * PINCH_CONFIG.topologyMargin) && (dTip / handScale < maxDist);
+}
+
+function updatePinch(st, dist, canEnter, action) {
+  if (!st.inPinch) {
+    if (canEnter && dist < PINCH_CONFIG.baseThreshold) {
+      st.inPinch = true; st.fired = false; st.startTime = performance.now();
+    }
+  } else {
+    if (dist > PINCH_CONFIG.releaseThreshold) { st.inPinch = false; st.fired = false; }
+    else {
+      const el = performance.now() - st.startTime;
+      if (el >= PINCH_CONFIG.holdDuration && !st.fired) { st.fired = true; action(); }
+    }
+  }
+}
+function extendedFingers(lm) {
+  const out = { index: false, middle: false, ring: false, pinky: false };
+  [['index',5,6,8],['middle',9,10,12],['ring',13,14,16],['pinky',17,18,20]].forEach(([n, mcp, pip, tip]) => {
+    const v1x = lm[pip].x - lm[mcp].x, v1y = lm[pip].y - lm[mcp].y;
+    const v2x = lm[tip].x - lm[pip].x, v2y = lm[tip].y - lm[pip].y;
+    const dot = v1x*v2x + v1y*v2y;
+    const m1 = Math.sqrt(v1x*v1x + v1y*v1y), m2 = Math.sqrt(v2x*v2x + v2y*v2y);
+    if (m1 > 0.001 && m2 > 0.001) out[n] = (dot / (m1*m2)) > 0.5;
+  });
+  return out;
+}
+function detectThumbPose(lm, W, H, handScale) {
+  if (distanceRaw(lm[4], lm[0]) / handScale < SAVE_CONFIG.thumbExtendRatio) return null;
+  const up = thumbUpness(lm, W, H);
+  if (up > SAVE_CONFIG.upMargin) return 'up';
+  if (up < -SAVE_CONFIG.upMargin) return 'down';
+  return null;
+}
+
+// ─── Save flow ──────────────────────────────────────────────────────────────
+function finishSaveFlow(msg, ok) {
+  resetSaveFlow();
+  renderSaveOverlay(performance.now());
+  showFlash(msg);
+  if (ok) { blip(523, 0.09); setTimeout(() => blip(784, 0.12), 100); }
+  else blip(240, 0.1);
+}
+function updateSaveFlow(now, isV, thumbPose) {
+  if (saveFlow.stage === 'idle') {
+    if (isV) { saveFlow.stage = 'vhold'; saveFlow.stageStart = now; }
+  } else if (saveFlow.stage === 'vhold') {
+    if (!isV) saveFlow.stage = 'idle';
+    else if (now - saveFlow.stageStart >= SAVE_CONFIG.vHoldDuration) {
+      saveFlow.stage = 'prompt';
+      saveFlow.promptExpire = now + SAVE_CONFIG.promptTimeout;
+      saveFlow.thumbHoldStart = 0;
+      blip(700, 0.08);
+    }
+  } else if (saveFlow.stage === 'prompt') {
+    if (now > saveFlow.promptExpire) { finishSaveFlow('⏱ TIMEOUT / หมดเวลา'); return; }
+    if (thumbPose === 'down') { finishSaveFlow('👎 CANCELLED / ยกเลิก'); return; }
+    if (thumbPose === 'up') {
+      if (!saveFlow.thumbHoldStart) saveFlow.thumbHoldStart = now;
+      else if (now - saveFlow.thumbHoldStart >= SAVE_CONFIG.thumbHoldDuration) {
+        saveCanvas();
+        finishSaveFlow('💾 SAVED ✓ / บันทึกแล้ว', true);
+        return;
+      }
+    } else saveFlow.thumbHoldStart = 0;
+  }
+  renderSaveOverlay(now);
+}
+function renderSaveOverlay(now) {
+  if (saveFlow.stage === 'idle') { saveOverlay.classList.remove('visible'); return; }
+  saveOverlay.classList.add('visible');
+  if (saveFlow.stage === 'vhold') {
+    saveHoldLabel.style.display = 'block';
+    savePromptText.style.display = 'none';
+    saveCountdown.style.display = 'none';
+    const p = Math.min(1, (now - saveFlow.stageStart) / SAVE_CONFIG.vHoldDuration);
+    saveBarFill.style.transform = `scaleX(${p})`;
+  } else {
+    saveHoldLabel.style.display = 'none';
+    savePromptText.style.display = 'block';
+    saveCountdown.style.display = 'block';
+    const remain = Math.max(0, Math.ceil((saveFlow.promptExpire - now) / 1000));
+    saveCountdown.textContent = 'AUTO-CANCEL ' + remain + 's / ยกเลิกอัตโนมัติ ' + remain + ' วิ';
+    const p = saveFlow.thumbHoldStart
+      ? Math.min(1, (now - saveFlow.thumbHoldStart) / SAVE_CONFIG.thumbHoldDuration)
+      : 0;
+    saveBarFill.style.transform = `scaleX(${p})`;
+  }
+}
+
+// ─── Auto-brightness pipeline ───────────────────────────────────────────────
+const anaCanvas = document.createElement('canvas');
+anaCanvas.width = 64; anaCanvas.height = 36;
+const anaCtx = anaCanvas.getContext('2d', { willReadFrequently: true });
+const procCanvas = document.createElement('canvas');
+procCanvas.width = 320; procCanvas.height = 180;
+const pCtx = procCanvas.getContext('2d', { willReadFrequently: true });
+const supportsCtxFilter = (typeof pCtx.filter === 'string');
+
+function sampleLuma() {
+  try {
+    anaCtx.drawImage(video, 0, 0, 64, 36);
+    const d = anaCtx.getImageData(0, 0, 64, 36).data;
+    let sum = 0;
+    for (let i = 0; i < d.length; i += 4) sum += 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2];
+    lastLuma = sum / (d.length / 4) / 255;
+    const target = Math.max(LIGHT_CONFIG.minGain, Math.min(LIGHT_CONFIG.maxGain, LIGHT_CONFIG.targetLuma / Math.max(lastLuma, 0.05)));
+    lightGain += (target - lightGain) * LIGHT_CONFIG.ema;
+    updateLightReadout();
+  } catch (e) {}
+}
+function applyLightFilter() {
+  const f = 'brightness(' + lightGain.toFixed(3) + ')';
+  video.style.filter = f;
+  if (supportsCtxFilter) pCtx.filter = f;
+}
+function manualGainToProc() {
+  const img = pCtx.getImageData(0, 0, procCanvas.width, procCanvas.height);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    d[i] = Math.min(255, d[i] * lightGain);
+    d[i+1] = Math.min(255, d[i+1] * lightGain);
+    d[i+2] = Math.min(255, d[i+2] * lightGain);
+  }
+  pCtx.putImageData(img, 0, 0);
+}
+function updateLightReadout() {
+  lightReadout.textContent = lastLuma.toFixed(2) + ' · ' + lightGain.toFixed(2) + ' · ' + (lightAuto ? 'AUTO' : 'MAN');
+}
+autoBrightBtn.onclick = () => {
+  lightAuto = !lightAuto;
+  autoBrightBtn.textContent = lightAuto ? '☀️ AUTO BRIGHT: ON' : '☀️ AUTO BRIGHT: OFF';
+  autoBrightBtn.classList.toggle('on', lightAuto);
+  brightnessSlider.style.display = lightAuto ? 'none' : 'block';
+  if (!lightAuto) { lightGain = +brightnessSlider.value; applyLightFilter(); }
+  updateLightReadout();
+  blip(lightAuto ? 700 : 350, 0.06);
+};
+brightnessSlider.addEventListener('input', () => { lightGain = +brightnessSlider.value; applyLightFilter(); updateLightReadout(); });
+
+// ─── MediaPipe results (ordered) ────────────────────────────────────────────
+function onResults(results) {
+  const now = performance.now();
+  fps = Math.round(1000 / Math.max(1, now - lastFrameTime));
+  lastFrameTime = now;
+
+  oCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+  const W = overlayCanvas.width, H = overlayCanvas.height;
+
+  if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+    handDetected = false; setHandStatus(false);
+    resetAllPinchStates();
+    if (saveFlow.stage === 'vhold') saveFlow.stage = 'idle';
+    if (saveFlow.stage === 'prompt') {
+      saveFlow.thumbHoldStart = 0;
+      if (now > saveFlow.promptExpire) finishSaveFlow('⏱ TIMEOUT / หมดเวลา');
+      else renderSaveOverlay(now);
+    } else renderSaveOverlay(now);
+    if (currentStroke && currentStroke.points.length > 0) { strokes.push(currentStroke); currentStroke = null; }
+    updateStats(0); clearLandmarkDisplay();
+    return;
+  }
+
+  handDetected = true; setHandStatus(true);
+  updateStats(results.multiHandLandmarks.length);
+  const lm = results.multiHandLandmarks[0];
+  const px = (l) => toScreenCoords(l.x, l.y).x, py = (l) => toScreenCoords(l.x, l.y).y;
+
+  const connections = [
+    [0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],
+    [0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],
+    [0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17],
+  ];
+  oCtx.strokeStyle = 'rgba(0,245,196,0.35)'; oCtx.lineWidth = 1.5;
+  connections.forEach(([a, b]) => {
+    oCtx.beginPath(); oCtx.moveTo(px(lm[a]), py(lm[a])); oCtx.lineTo(px(lm[b]), py(lm[b])); oCtx.stroke();
+  });
+  lm.forEach((l) => {
+    oCtx.beginPath(); oCtx.arc(px(l), py(l), 3, 0, Math.PI * 2);
+    oCtx.fillStyle = 'rgba(0,245,196,0.5)'; oCtx.fill();
+  });
+  [{0:'#888'},{4:'#aaa'},{8:'#ff6b6b'},{12:'#ffd93d'}].forEach((o) => {
+    const id = Object.keys(o)[0], l = lm[id];
+    oCtx.beginPath(); oCtx.arc(px(l), py(l), 6, 0, Math.PI * 2);
+    oCtx.fillStyle = o[id]; oCtx.fill();
+    oCtx.strokeStyle = 'white'; oCtx.lineWidth = 1; oCtx.stroke();
+  });
+
+  if (appPaused) {
+    lmGesture.textContent = '⏸ FROZEN'; lmGesture.classList.remove('off');
+    return;
+  }
+
+  const f = extendedFingers(lm);
+  const fingerCount = (f.index?1:0)+(f.middle?1:0)+(f.ring?1:0)+(f.pinky?1:0);
+
+  const handScale = distanceRaw(lm[0], lm[9]);
+  if (handScale < 0.001) {
+    resetAllPinchStates();
+    if (saveFlow.stage === 'vhold') saveFlow.stage = 'idle';
+    if (currentStroke && currentStroke.points.length > 0) { strokes.push(currentStroke); currentStroke = null; }
+    renderSaveOverlay(now);
+    return;
+  }
+
+  const isV = f.index && f.middle && !f.ring && !f.pinky;
+  const thumbPose = (fingerCount === 0) ? detectThumbPose(lm, W, H, handScale) : null;
+
+  updateSaveFlow(now, isV, thumbPose);
+  const promptOpen = (saveFlow.stage === 'prompt');
+  const uiLocked = promptOpen || editorOpen;
+
+  // ── PEN-DOWN MENU LOCK ──
+  // fingerCount === 1 (index extended = pen down) hard-locks all pinches.
+  // Your natural draw pose puts the curled fingertips at the thumb tip —
+  // geometrically identical to a deliberate pinch — so context (pen down)
+  // is the only reliable discriminator.
+  const penDown = (fingerCount === 1);
+
+  const distMiddle = distanceRaw(lm[4], lm[12]) / handScale;
+  const distRing   = distanceRaw(lm[4], lm[16]) / handScale;
+  const distPinky  = distanceRaw(lm[4], lm[20]) / handScale;
+
+  let anyColor = false, anyPinchActive = false;
+  let enterM = false, enterR = false, enterP = false;
+  let lockTouchTip = 0;
+
+  if (!uiLocked) {
+    const touchM = pinchTouch(lm, 12, 10, handScale, PINCH_CONFIG.baseThreshold);
+    const touchR = pinchTouch(lm, 16, 14, handScale, PINCH_CONFIG.baseThreshold);
+    const touchP = pinchTouch(lm, 20, 18, handScale, PINCH_CONFIG.baseThreshold);
+
+    if (penDown) {
+      // Flush any carry-over inPinch state so it can't fire while the pen is down
+      resetAllPinchStates();
+      // Record which tip is being touched, for the amber lock feedback
+      if (touchM) lockTouchTip = 12;
+      else if (touchR) lockTouchTip = 16;
+      else if (touchP) lockTouchTip = 20;
+    } else {
+      enterM = touchM; enterR = touchR; enterP = touchP;
+    }
+
+    // Color pinches first (tight), one at a time
+    updatePinch(pinchStates.middle, distMiddle, enterM, () => cycleColor(1));
+    anyColor = pinchStates.middle.inPinch;
+    updatePinch(pinchStates.ring, distRing, enterR && !anyColor, () => cycleColor(-1));
+    anyColor = anyColor || pinchStates.ring.inPinch;
+    updatePinch(pinchStates.pinky, distPinky, enterP && !anyColor, cycleBrush);
+    anyColor = anyColor || pinchStates.pinky.inPinch;
+
+    anyPinchActive = anyColor;
+  }
+
+  // ── Proximity / lock feedback ──
+  [[12, pinchStates.middle, enterM, '#ffd93d'],
+   [16, pinchStates.ring,   enterR, '#6bcbff'],
+   [20, pinchStates.pinky,  enterP, '#ff9ff3']].forEach(([tip, st, en, col]) => {
+    const active = st.inPinch;
+    if (active || en) {
+      oCtx.beginPath();
+      oCtx.moveTo(px(lm[4]), py(lm[4]));
+      oCtx.lineTo(px(lm[tip]), py(lm[tip]));
+      oCtx.strokeStyle = col;
+      oCtx.lineWidth = active ? 3 : 1.5;
+      oCtx.setLineDash(active ? [] : [4, 4]);
+      oCtx.stroke();
+      oCtx.setLineDash([]);
+    }
+  });
+  if (lockTouchTip) {
+    // Amber dashed = "menu locked, lift the pen to use pinch"
+    oCtx.beginPath();
+    oCtx.moveTo(px(lm[4]), py(lm[4]));
+    oCtx.lineTo(px(lm[lockTouchTip]), py(lm[lockTouchTip]));
+    oCtx.strokeStyle = 'rgba(255,217,61,0.8)';
+    oCtx.lineWidth = 1.5;
+    oCtx.setLineDash([2, 4]);
+    oCtx.stroke();
+    oCtx.setLineDash([]);
+  }
+
+  let gesture = '—', drawingActive = false;
+
+  if (promptOpen) {
+    gesture = '💾 SAVE?';
+    setDrawStatus(false); lastSmoothedPoint = null;
+    if (currentStroke && currentStroke.points.length > 1) { strokes.push(currentStroke); currentStroke = null; }
+
+  } else if (anyPinchActive) {
+    gesture = '🤏 PINCH';
+    setDrawStatus(false); lastSmoothedPoint = null;
+    if (currentStroke && currentStroke.points.length > 1) { strokes.push(currentStroke); currentStroke = null; }
+
+  } else if (fingerCount === 1) {
+    gesture = lockTouchTip ? '☝️ DRAW·🔒' : '☝️ DRAW';
+    drawingActive = true;
+    setDrawStatus(true);
+    const rx = px(lm[8]), ry = py(lm[8]);
+    if (!lastSmoothedPoint) lastSmoothedPoint = { x: rx, y: ry };
+    else { lastSmoothedPoint.x = lastSmoothedPoint.x*0.5 + rx*0.5; lastSmoothedPoint.y = lastSmoothedPoint.y*0.5 + ry*0.5; }
+    if (!currentStroke) currentStroke = { color: currentColor(), size: currentBrush, points: [] };
+    currentStroke.points.push({ x: lastSmoothedPoint.x, y: lastSmoothedPoint.y });
+    totalPoints++;
+    drawSegment(currentStroke);
+
+  } else if (fingerCount === 2) {
+    gesture = (saveFlow.stage === 'vhold') ? '✌️ HOLD→SAVE' : '✌️ PEN LIFT';
+    setDrawStatus(false); lastSmoothedPoint = null;
+    if (currentStroke && currentStroke.points.length > 1) { strokes.push(currentStroke); currentStroke = null; updateStats(); }
+    else currentStroke = null;
+
+  } else {
+    gesture = thumbPose === 'up' ? '👍 YES?' : (thumbPose === 'down' ? '👎 NO' : '✊ STANDBY');
+    setDrawStatus(false); lastSmoothedPoint = null;
+    if (currentStroke && currentStroke.points.length > 1) { strokes.push(currentStroke); currentStroke = null; updateStats(); }
+    else currentStroke = null;
+  }
+
+  // Draw Reticle Cursor
+  const ix = px(lm[8]), iy = py(lm[8]);
+  oCtx.beginPath(); oCtx.arc(ix, iy, currentBrush / 2 + 4, 0, Math.PI * 2);
+  oCtx.strokeStyle = drawingActive ? currentColor() : 'rgba(255,255,255,0.4)';
+  oCtx.lineWidth = 2; oCtx.stroke();
+  if (drawingActive) {
+    oCtx.beginPath(); oCtx.arc(ix, iy, 3, 0, Math.PI * 2);
+    oCtx.fillStyle = currentColor(); oCtx.fill();
+  }
+
+  lm0.textContent = fmt(lm[0]); lm0.classList.remove('off');
+  lm4.textContent = fmt(lm[4]); lm4.classList.remove('off');
+  lm8.textContent = fmt(lm[8]); lm8.classList.remove('off');
+  lm12.textContent = fmt(lm[12]); lm12.classList.remove('off');
+  lmGesture.textContent = gesture; lmGesture.classList.remove('off');
+}
+function fmt(l) { return l.x.toFixed(2) + ',' + l.y.toFixed(2); }
+function clearLandmarkDisplay() {
+  [lm0, lm4, lm8, lm12, lmGesture].forEach(el => { el.textContent = '—'; el.classList.add('off'); });
+}
+
+// ─── Status / stats ─────────────────────────────────────────────────────────
+function setHandStatus(d) {
+  if (d) { handDot.classList.add('active'); handLabel.textContent = 'HAND ✓'; }
+  else { handDot.classList.remove('active', 'drawing'); handLabel.textContent = 'NO HAND'; }
+}
+function setDrawStatus(on) {
+  if (on) {
+    drawDot.classList.add('drawing'); drawDot.classList.remove('paused');
+    drawLabel.textContent = 'ARMED'; drawIndicator.classList.add('visible');
+  } else {
+    drawDot.classList.remove('drawing');
+    drawLabel.textContent = appPaused ? 'FROZEN' : 'STANDBY';
+    drawIndicator.classList.remove('visible');
+  }
+}
+function updateStats(hands) {
+  statFPS.textContent = fps;
+  statStrokes.textContent = strokes.length + (currentStroke ? 1 : 0);
+  statPoints.textContent = totalPoints;
+  if (hands !== undefined) statHands.textContent = hands;
+}
+
+// ─── Keyboard ───────────────────────────────────────────────────────────────
+document.addEventListener('keydown', (e) => {
+  if (!cameraStarted && !mouseMode) return;
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undoStroke(); }
+  if (e.key === 'Shift') {
+    e.preventDefault();
+    appPaused = !appPaused;
+    if (appPaused) {
+      drawDot.classList.add('paused'); drawDot.classList.remove('drawing');
+      drawLabel.textContent = 'FROZEN'; drawIndicator.classList.remove('visible');
+      if (currentStroke) { if (currentStroke.points.length > 1) strokes.push(currentStroke); currentStroke = null; }
+      resetAllPinchStates(); resetSaveFlow(); renderSaveOverlay(performance.now());
+    } else { drawDot.classList.remove('paused'); drawLabel.textContent = 'STANDBY'; }
+    blip(appPaused ? 200 : 600, 0.08);
+  }
+  if (e.code === 'Space') { e.preventDefault(); clearCanvas(); }
+});
+
+// ─── Camera ─────────────────────────────────────────────────────────────────
+startBtn.onclick = startCamera;
+clearBtn.onclick = clearCanvas;
+saveBtn.onclick = () => { saveCanvas(); showFlash('💾 SAVED ✓ / บันทึกแล้ว'); blip(523, 0.09); setTimeout(() => blip(784, 0.12), 100); };
+undoBtn.onclick = undoStroke;
+soundBtn.onclick = () => {
+  soundOn = !soundOn;
+  soundBtn.textContent = soundOn ? '🔊 SOUND: ON' : '🔇 SOUND: OFF';
+  soundBtn.classList.toggle('on', soundOn);
+  if (soundOn) blip(800, 0.06);
+};
+
+let isProcessingFrame = false;
+async function startCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720, facingMode: 'user' } });
+    video.srcObject = stream;
+    await video.play();
+    cameraStarted = true;
+    placeholder.classList.add('hidden');
+    camDot.classList.add('active'); camLabel.textContent = 'CAMERA ON';
+    resizeCanvases();
+    showFlash('กำลังเริ่มต้นระบบ AI & WASM ENGINE...');
+    initMediaPipe();
+  } catch (err) {
+    showError('ไม่สามารถเข้าถึงกล้องได้: ' + err.message);
+  }
+}
+
+function initMediaPipe() {
+  const hands = new Hands({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${f}` });
+  hands.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+  hands.onResults(onResults);
+
+  // Use setTimeout instead of requestAnimationFrame so the browser can
+  // handle UI events (clicks, scroll) between AI frames.
+  // rAF fires synchronously inside the paint cycle and WASM blocks it entirely.
+  let aiRunning = true;
+  async function processLoop() {
+    if (!aiRunning || !cameraStarted || mouseMode) return;
+    if (!appPaused && !isProcessingFrame && video.readyState >= 2) {
+      isProcessingFrame = true;
+      try {
+        frameCounter++;
+        if (lightAuto && frameCounter % LIGHT_CONFIG.sampleEvery === 0) sampleLuma();
+        applyLightFilter();
+        pCtx.drawImage(video, 0, 0, procCanvas.width, procCanvas.height);
+        if (!supportsCtxFilter) manualGainToProc();
+        await hands.send({ image: procCanvas });
+      } catch (e) {
+        console.warn('Frame processing issue:', e);
+      } finally {
+        isProcessingFrame = false;
+      }
+    }
+    // 5ms yield lets the browser flush queued UI events before the next AI frame
+    setTimeout(processLoop, 5);
+  }
+  setTimeout(processLoop, 0);
+  return () => { aiRunning = false; };
+}
+
+// ─── Mouse simulation mode ──────────────────────────────────────────────────
+let simDrawing = false, simX = 0, simY = 0, simRaf = 0, simLastT = 0;
+mouseSimBtn.onclick = () => {
+  mouseMode = true;
+  placeholder.classList.add('hidden');
+  canvasArea.classList.add('sim');
+  camDot.classList.add('active'); camLabel.textContent = 'SIM MODE';
+  resizeCanvases();
+  showFlash('🖱️ SIMULATION: HOLD CLICK = DRAW');
+  blip(600, 0.08);
+  simLoop(performance.now());
+};
+exitSimBtn.onclick = () => {
+  mouseMode = false; simDrawing = false;
+  cancelAnimationFrame(simRaf);
+  canvasArea.classList.remove('sim');
+  placeholder.classList.remove('hidden');
+  camDot.classList.remove('active'); camLabel.textContent = 'CAMERA OFF';
+  oCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+  lastSmoothedPoint = null;
+  blip(300, 0.08);
+};
+canvasArea.addEventListener('mousemove', (e) => {
+  if (!mouseMode) return;
+  const r = drawCanvas.getBoundingClientRect();
+  simX = e.clientX - r.left; simY = e.clientY - r.top;
+  if (simDrawing && !appPaused) simAddPoint(simX, simY);
+});
+canvasArea.addEventListener('mousedown', (e) => {
+  if (!mouseMode || appPaused || e.target.tagName === 'BUTTON') return;
+  simDrawing = true; lastSmoothedPoint = null;
+  simAddPoint(simX, simY);
+});
+window.addEventListener('mouseup', () => {
+  if (!mouseMode) return;
+  if (simDrawing && currentStroke && currentStroke.points.length > 1) strokes.push(currentStroke);
+  currentStroke = null; simDrawing = false; lastSmoothedPoint = null;
+  updateStats();
+});
+function simAddPoint(x, y) {
+  if (!lastSmoothedPoint) lastSmoothedPoint = { x, y };
+  else { lastSmoothedPoint.x = lastSmoothedPoint.x*0.5 + x*0.5; lastSmoothedPoint.y = lastSmoothedPoint.y*0.5 + y*0.5; }
+  if (!currentStroke) currentStroke = { color: currentColor(), size: currentBrush, points: [] };
+  currentStroke.points.push({ x: lastSmoothedPoint.x, y: lastSmoothedPoint.y });
+  totalPoints++;
+  drawSegment(currentStroke);
+}
+function simLoop(t) {
+  if (!mouseMode) return;
+  fps = Math.round(1000 / Math.max(1, t - simLastT)); simLastT = t;
+  oCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+  oCtx.beginPath(); oCtx.arc(simX, simY, currentBrush / 2 + 4, 0, Math.PI * 2);
+  oCtx.strokeStyle = simDrawing ? currentColor() : 'rgba(255,255,255,0.4)';
+  oCtx.lineWidth = 2; oCtx.stroke();
+  updateStats();
+  simRaf = requestAnimationFrame(simLoop);
+}
+
+// ─── Error toast / init ─────────────────────────────────────────────────────
+function showError(msg) {
+  const t = document.getElementById('errorToast');
+  t.textContent = msg; t.classList.add('visible');
+  setTimeout(() => t.classList.remove('visible'), 4000);
+}
+video.addEventListener('loadedmetadata', () => {
+  if (video.videoWidth && video.videoHeight) PINCH_CONFIG.cameraAspect = video.videoWidth / video.videoHeight;
+});
+buildPalette();
+setBrush(6, true);
+updateLightReadout();
+resizeCanvases();
+</script>
+</body>
+</html>
